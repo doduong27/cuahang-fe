@@ -3,10 +3,10 @@ pipeline {
 
     environment {
         APP_NAME        = 'cuahang-fe'
-        DOCKER_HUB_USER = 'your-dockerhub-username'
+        DOCKER_HUB_USER = 'doduong27'
         IMAGE_NAME      = "${DOCKER_HUB_USER}/${APP_NAME}"
         IMAGE_TAG       = "${BUILD_NUMBER}-${GIT_COMMIT.take(7)}"
-        GITOPS_REPO     = 'https://github.com/your-github-user/cuahang-gitops.git'
+        GITOPS_REPO     = 'https://github.com/doduong27/cuahang-gitops.git'
     }
 
     stages {
