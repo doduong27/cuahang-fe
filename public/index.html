@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cửa Hàng Công Nghệ — DevOps Pilot Project</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @keyframes pulse-slow {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .animate-pulse-slow { animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans">
+
+  <!-- DevOps Environment Top Bar -->
+  <header class="bg-slate-950 border-b border-slate-800 px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-3 shadow-md">
+    <div class="flex items-center gap-2">
+      <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse-slow"></span>
+      <span class="font-semibold text-slate-300">DevOps Cluster:</span>
+      <span id="envBadge" class="px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-blue-500/20 text-blue-400 border border-blue-500/30">
+        Đang phát hiện...
+      </span>
+    </div>
+    <div class="flex items-center gap-4 text-slate-400">
+      <div>Backend API: <span id="backendStatus" class="text-amber-400 font-mono">Đang kết nối...</span></div>
+      <div>Pod ID: <span id="podHostname" class="text-slate-300 font-mono">k8s-pod-unknown</span></div>
+      <div>Độ trễ: <span id="apiLatency" class="text-emerald-400 font-mono">-- ms</span></div>
+    </div>
+  </header>
+
+  <!-- Navbar -->
+  <nav class="bg-slate-900/90 backdrop-blur sticky top-0 z-30 border-b border-slate-800 px-6 py-4">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+          <i class="fa-solid fa-store text-lg"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg text-white tracking-tight">Cửa Hàng Công Nghệ</h1>
+          <p class="text-xs text-slate-400">Dự án thí điểm GitOps & Kubernetes</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <button onclick="refreshData()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg transition border border-slate-700 flex items-center gap-1.5">
+          <i class="fa-solid fa-arrows-rotate"></i> Làm mới API
+        </button>
+        <button onclick="openCart()" class="relative px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg shadow transition flex items-center gap-2">
+          <i class="fa-solid fa-cart-shopping"></i> Giỏ hàng
+          <span id="cartCount" class="bg-rose-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">0</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl mx-auto w-full p-6 space-y-6">
+    <!-- Banner -->
+    <div class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-900/50 via-slate-800/50 to-slate-900 p-8 border border-slate-800 shadow-xl">
+      <div class="relative z-10 max-w-2xl space-y-2">
+        <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-medium">
+          <i class="fa-solid fa-circle-check text-[10px]"></i> Kết nối cơ sở dữ liệu PostgreSQL 18 qua REST API
+        </div>
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-white">Sản Phẩm Công Nghệ Cao Cấp</h2>
+        <p class="text-sm text-slate-300">Dữ liệu được truy vấn trực tiếp từ máy ảo Database VM (192.168.1.253), triển khai tự động qua Argo CD và kiểm soát chính sách Pod bằng Kyverno.</p>
+      </div>
+    </div>
+
+    <!-- Product Grid -->
+    <div>
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-boxes-stacked text-indigo-400"></i> Danh mục sản phẩm đang mở bán
+        </h3>
+        <span id="productCountBadge" class="text-xs text-slate-400">Đang tải...</span>
+      </div>
+
+      <div id="productGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+        <!-- Render bằng JavaScript -->
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-slate-950 border-t border-slate-800 py-6 text-center text-xs text-slate-500">
+    <p>Hệ thống DevOps Pilot Project — Kiến trúc Proxmox + k3s + Argo CD + PostgreSQL</p>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
