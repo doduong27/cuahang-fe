@@ -14,8 +14,8 @@ pipeline {
         )
         string(
             name: 'IMAGE_TAG',
-            defaultValue: 'dev-v2',
-            description: '🏷️ Tag Image (nếu chọn "Deploy Only", hệ thống sẽ lấy Tag này để cập nhật vào môi trường đã chọn):'
+            defaultValue: 'v2.0.0',
+            description: '🏷️ Tag phiên bản SemVer (ví dụ: v1.0.0, v2.0.0, v2.1.0):'
         )
     }
 
