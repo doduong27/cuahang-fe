@@ -26,7 +26,7 @@ pipeline {
         stage('2. Build Docker Image') {
             steps {
                 echo "🐳 Build Docker Image Frontend: ${IMAGE_NAME}:${IMAGE_TAG}..."
-                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:latest ."
+                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:latest -t ${IMAGE_NAME}:dev-latest ."
             }
         }
 
@@ -45,8 +45,15 @@ pipeline {
 
         stage('4. Push to Registry') {
             steps {
-                echo "🚀 Đẩy image lên Docker Hub..."
-                echo "Giả lập đẩy thành công image ${IMAGE_NAME}:${IMAGE_TAG}"
+                echo "🚀 Đẩy image lên Docker Hub: ${IMAGE_NAME}:${IMAGE_TAG}..."
+                withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                        docker push ${IMAGE_NAME}:latest
+                        docker push ${IMAGE_NAME}:dev-latest
+                    '''
+                }
             }
         }
 
