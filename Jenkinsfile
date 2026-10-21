@@ -55,12 +55,12 @@ pipeline {
                 sh "docker build -t ${IMAGE_NAME}:${env.FINAL_TAG} -t ${IMAGE_NAME}:latest -t ${IMAGE_NAME}:${params.TARGET_ENV}-latest ."
                 echo "🚀 Đẩy image lên Docker Hub..."
                 withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh '''
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        docker push ${IMAGE_NAME}:${FINAL_TAG}
+                    sh """
+                        echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin
+                        docker push ${IMAGE_NAME}:${env.FINAL_TAG}
                         docker push ${IMAGE_NAME}:latest
-                        docker push ${IMAGE_NAME}:${TARGET_ENV}-latest
-                    '''
+                        docker push ${IMAGE_NAME}:${params.TARGET_ENV}-latest
+                    """
                 }
             }
         }
