@@ -15,7 +15,7 @@ pipeline {
         string(
             name: 'IMAGE_TAG',
             defaultValue: 'v2.0.0',
-            description: '🏷️ Tag phiên bản SemVer (ví dụ: v1.0.0, v2.0.0, v2.1.0):'
+            description: '🏷️ Tag phiên bản SemVer (định dạng vx.x.x - Ví dụ: v2.0.0, v2.1.0, v3.0.0):'
         )
     }
 
@@ -31,9 +31,9 @@ pipeline {
             steps {
                 script {
                     if (params.ACTION == 'Build & Deploy') {
-                        env.FINAL_TAG = "build-${BUILD_NUMBER}-${GIT_COMMIT.take(7)}"
+                        env.FINAL_TAG = (params.IMAGE_TAG && params.IMAGE_TAG.trim() != '') ? params.IMAGE_TAG.trim() : "v2.0.${BUILD_NUMBER}"
                     } else {
-                        env.FINAL_TAG = params.IMAGE_TAG
+                        env.FINAL_TAG = params.IMAGE_TAG.trim()
                     }
                     echo "=========================================================="
                     echo "🚀 KẾ HOẠCH TRIỂN KHAI:"
@@ -53,6 +53,16 @@ pipeline {
             steps {
                 echo "🐳 Đang Build Docker Image ${IMAGE_NAME}:${env.FINAL_TAG}..."
                 sh "docker build -t ${IMAGE_NAME}:${env.FINAL_TAG} -t ${IMAGE_NAME}:latest -t ${IMAGE_NAME}:${params.TARGET_ENV}-latest ."
+
+                echo '🛡️ Quét lỗ hổng bảo mật Docker Image bằng Trivy...'
+                sh """
+                    if command -v trivy &> /dev/null; then
+                        trivy image --severity CRITICAL --exit-code 0 ${IMAGE_NAME}:${env.FINAL_TAG} || true
+                    else
+                        echo "Trivy chưa cài, bỏ qua quét Image"
+                    fi
+                """
+
                 echo "🚀 Đẩy image lên Docker Hub..."
                 withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh """
