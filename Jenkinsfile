@@ -31,11 +31,10 @@ pipeline {
             steps {
                 script {
                     def rawTag = params.IMAGE_TAG ? params.IMAGE_TAG.trim() : 'v2.0.0'
-                    def cleanMatch = (rawTag =~ /^(v\d+\.\d+\.\d+)/)
-                    def baseSemver = cleanMatch ? cleanMatch[0][1] : rawTag
+                    def baseSemver = rawTag.contains('-') ? rawTag.split('-')[0] : rawTag
 
                     if (params.TARGET_ENV == 'prod') {
-                        // PRODUCTION: Luôn luôn dùng Tag sạch chuẩn quốc tế vx.x.x (ví dụ v2.0.0)
+                        // PRODUCTION: Luôn chốt Tag sạch chuẩn quốc tế vx.x.x (ví dụ v2.0.0)
                         env.FINAL_TAG = baseSemver
                         env.IS_PROD = 'true'
                         env.SOURCE_TAG = (rawTag != baseSemver) ? rawTag : ''
@@ -45,27 +44,8 @@ pipeline {
                         if (params.ACTION == 'Build & Deploy') {
                             env.FINAL_TAG = "${baseSemver}-b${BUILD_NUMBER}"
                         } else {
-                            // Deploy Only: Nếu không chỉ định đuôi -b, tự tìm tag từ Dev
-                            if (rawTag == baseSemver) {
-                                sh """
-                                    rm -rf gitops-dev-check
-                                    GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone --depth 1 ${GITOPS_REPO_SSH} gitops-dev-check
-                                    DEV_TAG=\$(grep -A 2 'name: ${APP_NAME}' gitops-dev-check/projects/cuahang/overlays/dev/kustomization.yaml | grep 'newTag:' | awk '{print \$2}' | tr -d ' ' || true)
-                                    rm -rf gitops-dev-check
-                                    if [ -n "\$DEV_TAG" ]; then
-                                        echo "\$DEV_TAG" > dev_tag.txt
-                                    fi
-                                """
-                                if (fileExists('dev_tag.txt')) {
-                                    def resolved = readFile('dev_tag.txt').trim()
-                                    env.FINAL_TAG = (resolved != '') ? resolved : rawTag
-                                    sh "rm -f dev_tag.txt"
-                                } else {
-                                    env.FINAL_TAG = rawTag
-                                }
-                            } else {
-                                env.FINAL_TAG = rawTag
-                            }
+                            env.FINAL_TAG = rawTag
+                            env.RESOLVE_FROM_DEV = (rawTag == baseSemver) ? 'true' : 'false'
                         }
                     } else {
                         // DEV:
@@ -83,7 +63,7 @@ pipeline {
                     echo "   - Môi trường đích: [ ${params.TARGET_ENV.toUpperCase()} ]"
                     echo "   - Hành động: ${params.ACTION}"
                     echo "   - Phiên bản SemVer gốc: ${baseSemver}"
-                    echo "   - Image Tag triển khai: [ ${env.FINAL_TAG} ]"
+                    echo "   - Image Tag dự kiến: [ ${env.FINAL_TAG} ]"
                     if (env.IS_PROD == 'true') {
                         echo "   - Quy chuẩn Production: Tự động chốt Tag sạch SemVer [ ${env.FINAL_TAG} ]"
                     } else {
@@ -126,68 +106,60 @@ pipeline {
             }
         }
 
-        stage('2b. Đóng dấu Tag chính thức cho Production') {
-            when {
-                allOf {
-                    expression { return params.TARGET_ENV == 'prod' }
-                    expression { return params.ACTION == 'Deploy Only (Promote)' }
-                }
-            }
-            steps {
-                script {
-                    echo "📦 Đang chuẩn bị đóng dấu Tag chính thức [ ${env.FINAL_TAG} ] cho Production..."
-                    withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh """
-                            echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin
-                            
-                            SRC_TAG="${env.SOURCE_TAG}"
-                            if [ -z "\$SRC_TAG" ]; then
-                                rm -rf gitops-src-check
-                                GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone --depth 1 ${GITOPS_REPO_SSH} gitops-src-check
-                                SRC_TAG=\$(grep -A 2 'name: ${APP_NAME}' gitops-src-check/projects/cuahang/overlays/stag/kustomization.yaml | grep 'newTag:' | awk '{print \$2}' | tr -d ' ' || true)
-                                rm -rf gitops-src-check
-                            fi
-                            
-                            if [ -n "\$SRC_TAG" ] && [ "\$SRC_TAG" != "${env.FINAL_TAG}" ]; then
-                                echo "🔄 Lấy Image đã nghiệm thu từ Staging: \${SRC_TAG} -> Gán nhãn thành Tag Prod sạch: ${env.FINAL_TAG}"
-                                docker pull ${IMAGE_NAME}:\${SRC_TAG}
-                                docker tag ${IMAGE_NAME}:\${SRC_TAG} ${IMAGE_NAME}:${env.FINAL_TAG}
-                                docker tag ${IMAGE_NAME}:\${SRC_TAG} ${IMAGE_NAME}:latest
-                                docker push ${IMAGE_NAME}:${env.FINAL_TAG}
-                                docker push ${IMAGE_NAME}:latest
-                                echo "✅ Đã gán nhãn và đẩy Tag Production sạch ${env.FINAL_TAG} thành công!"
-                            else
-                                echo "ℹ️ Image ${IMAGE_NAME}:${env.FINAL_TAG} đã sẵn sàng."
-                            fi
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('3. Cập nhật GitOps Manifest') {
+        stage('3. Cập nhật GitOps Manifest & Đóng dấu Release') {
             steps {
                 echo "🔄 Đang cập nhật Kustomize Manifest cho môi trường: ${params.TARGET_ENV}..."
-                sh """
-                    rm -rf gitops-tmp
-                    GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone ${GITOPS_REPO_SSH} gitops-tmp
-                    cd gitops-tmp/projects/cuahang/overlays/${params.TARGET_ENV}
-                    
-                    # Cập nhật image tag chuẩn xác bằng Kustomize CLI
-                    kustomize edit set image ${APP_NAME}=docker.io/${IMAGE_NAME}:${env.FINAL_TAG}
-                    
-                    git config user.name "jenkins-bot"
-                    git config user.email "jenkins@lan"
-                    
-                    if git status --porcelain | grep -q 'kustomization.yaml'; then
-                        git add kustomization.yaml
-                        git commit -m "ci(${params.TARGET_ENV}): promote ${APP_NAME} to ${env.FINAL_TAG} via Jenkins [skip ci]"
-                        GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git push origin main
-                        echo "✅ Đã commit và push cập nhật GitOps thành công!"
-                    else
-                        echo "ℹ️ Tag ${env.FINAL_TAG} đã tồn tại trong kustomization.yaml của ${params.TARGET_ENV}, không có thay đổi mới."
-                    fi
-                """
+                withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh """
+                        rm -rf gitops-tmp
+                        GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" git clone ${GITOPS_REPO_SSH} gitops-tmp
+                        cd gitops-tmp/projects/cuahang/overlays/${params.TARGET_ENV}
+                        
+                        ACTUAL_TAG="${env.FINAL_TAG}"
+                        
+                        # Nếu là Staging Promote và chưa chỉ định tag -b, tự động lấy tag vừa test ở Dev
+                        if [ "${params.TARGET_ENV}" = "stag" ] && [ "${env.RESOLVE_FROM_DEV}" = "true" ]; then
+                            DEV_TAG=\$(grep -A 2 'name: ${APP_NAME}' ../dev/kustomization.yaml | grep 'newTag:' | awk '{print \$2}' | tr -d ' ' || true)
+                            if [ -n "\$DEV_TAG" ]; then
+                                ACTUAL_TAG="\$DEV_TAG"
+                                echo "🎯 Tự động lấy Tag đã kiểm thử từ Dev sang Staging: \${ACTUAL_TAG}"
+                            fi
+                        fi
+                        
+                        # Nếu là Production Promote: Đóng dấu Tag sạch chính thức vx.x.x từ Staging
+                        if [ "${params.TARGET_ENV}" = "prod" ] && [ "${params.ACTION}" = "Deploy Only (Promote)" ]; then
+                            SRC_TAG="${env.SOURCE_TAG}"
+                            if [ -z "\$SRC_TAG" ]; then
+                                SRC_TAG=\$(grep -A 2 'name: ${APP_NAME}' ../stag/kustomization.yaml | grep 'newTag:' | awk '{print \$2}' | tr -d ' ' || true)
+                            fi
+                            if [ -n "\$SRC_TAG" ] && [ "\$SRC_TAG" != "\$ACTUAL_TAG" ]; then
+                                echo "🔄 Lấy Image đã nghiệm thu từ Staging (\${SRC_TAG}) -> Gán nhãn Tag Prod sạch (\${ACTUAL_TAG})"
+                                echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin
+                                docker pull ${IMAGE_NAME}:\${SRC_TAG}
+                                docker tag ${IMAGE_NAME}:\${SRC_TAG} ${IMAGE_NAME}:\${ACTUAL_TAG}
+                                docker tag ${IMAGE_NAME}:\${SRC_TAG} ${IMAGE_NAME}:latest
+                                docker push ${IMAGE_NAME}:\${ACTUAL_TAG}
+                                docker push ${IMAGE_NAME}:latest
+                                echo "✅ Đã gán nhãn và đẩy Tag Production sạch \${ACTUAL_TAG} thành công!"
+                            fi
+                        fi
+                        
+                        # Cập nhật image tag chuẩn xác bằng Kustomize CLI
+                        kustomize edit set image ${APP_NAME}=docker.io/${IMAGE_NAME}:\${ACTUAL_TAG}
+                        
+                        git config user.name "jenkins-bot"
+                        git config user.email "jenkins@lan"
+                        
+                        if git status --porcelain | grep -q 'kustomization.yaml'; then
+                            git add kustomization.yaml
+                            git commit -m "ci(${params.TARGET_ENV}): promote ${APP_NAME} to \${ACTUAL_TAG} via Jenkins [skip ci]"
+                            GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" git push origin main
+                            echo "✅ Đã commit và push cập nhật GitOps thành công với tag [\${ACTUAL_TAG}]!"
+                        else
+                            echo "ℹ️ Tag \${ACTUAL_TAG} đã tồn tại trong kustomization.yaml của ${params.TARGET_ENV}, không có thay đổi mới."
+                        fi
+                    """
+                }
             }
         }
 
@@ -210,7 +182,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ Pipeline hoàn thành xuất sắc! Môi trường [ ${params.TARGET_ENV.toUpperCase()} ] đã được đồng bộ với Tag [ ${env.FINAL_TAG} ]."
+            echo "✅ Pipeline hoàn thành xuất sắc! Môi trường [ ${params.TARGET_ENV.toUpperCase()} ] đã được đồng bộ."
         }
         failure {
             echo "❌ Pipeline gặp lỗi! Vui lòng kiểm tra log chi tiết."
